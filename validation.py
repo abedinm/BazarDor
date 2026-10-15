@@ -9,7 +9,9 @@ from datetime import date, datetime
 from price_record import ITEMS, MARKETS
 
 MAX_PRICE = 2000  # Taka per unit; anything higher is almost certainly a typing mistake
-MAX_QUANTITY = 100  # for the shopping list
+MAX_QUANTITY = 200  # for the shopping list (a large family needs a lot of rice)
+MAX_FAMILY_SIZE = 15
+MAX_BUDGET = 1_000_000  # Taka
 EARLIEST_YEAR = 2020
 
 
@@ -69,6 +71,28 @@ def check_quantity(quantity_text):
     if not 0 < quantity <= MAX_QUANTITY:
         raise ValueError(f"Quantity must be more than 0 and at most {MAX_QUANTITY}.")
     return quantity
+
+
+def check_family_size(size_text):
+    size = to_number(size_text.strip())
+    if size is None or not size.is_integer():
+        raise ValueError("Family size must be a whole number, like 4.")
+    if not 1 <= size <= MAX_FAMILY_SIZE:
+        raise ValueError(f"Family size must be between 1 and {MAX_FAMILY_SIZE}.")
+    return int(size)
+
+
+def check_budget(budget_text):
+    """An empty budget is allowed and means "no budget". Returns a number or None."""
+    budget_text = budget_text.strip()
+    if budget_text == "":
+        return None
+    budget = to_number(budget_text)
+    if budget is None:
+        raise ValueError("Budget must be a number, like 5000.")
+    if not 0 < budget <= MAX_BUDGET:
+        raise ValueError(f"Budget must be more than 0 and at most {MAX_BUDGET:,} Tk.")
+    return budget
 
 
 def check_record(date_text, item, market, price_text):

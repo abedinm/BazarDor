@@ -8,12 +8,27 @@ from datetime import date
 
 import numpy as np
 
-from price_record import ITEMS
+from price_record import ITEMS, MARKETS
 
 GOOD_DEAL_PERCENT = 95  # this week's price at or below 95% of the usual price
 NORMAL_LIMIT_PERCENT = 105  # up to 105% still counts as normal
 STABLE_PERCENT = 5  # spread under 5% of the average price = stable
 MODERATE_PERCENT = 15  # spread under 15% = moderate, above that = volatile
+FAIR_LIMIT_PERCENT = 105  # a seller asking up to 5% above today's average is fair
+HIGH_LIMIT_PERCENT = 115  # up to 15% above is "a little high"; more is overpriced
+ALERT_PERCENT = 10  # items that rose more than 10% appear in the price alert
+
+# Dictionary: item -> rough amount one person uses in a month.
+# A starting point for the family basket; change it to match your family.
+MONTHLY_PER_PERSON = {
+    "Rice (Coarse)": 11,
+    "Red Lentil (Masoor)": 0.5,
+    "Onion (Local)": 1,
+    "Potato": 2,
+    "Soybean Oil (Bottled)": 1,
+    "Egg (Farm)": 0.75,
+    "Sugar": 0.5,
+}
 
 
 def price_stats(prices):
@@ -218,3 +233,86 @@ def report_lines(book):
             f" {change_text(row['change_percent']):<20} {row['signal']}"
         )
     return lines
+
+
+# ---------- features for everyday shoppers ----------
+
+
+def fair_price_check(records, asked_price):
+    """Compare the price a seller asks with what markets charge now.
+
+    Returns a dictionary with the verdict, or None if the item has no records.
+    """
+    if not records:
+        return None
+    current_prices = latest_price_by_market(records)
+    stats = price_stats(list(current_prices.values()))
+    market, cheapest = cheapest_market(current_prices)
+    percent = asked_price / stats["average"] * 100
+
+    if percent <= FAIR_LIMIT_PERCENT:
+        verdict = "Fair price"
+    elif percent <= HIGH_LIMIT_PERCENT:
+        verdict = "A little high"
+    else:
+        verdict = "Overpriced"
+
+    return {
+        "verdict": verdict,
+        "percent": percent,
+        "average": stats["average"],
+        "lowest": stats["lowest"],
+        "highest": stats["highest"],
+        "cheapest_market": market,
+        "cheapest_price": cheapest,
+        "record_count": len(records),
+    }
+
+
+def price_alerts(book):
+    """List of (item, change percent) for items that rose more than ALERT_PERCENT."""
+    alerts = []
+    for row in item_overview(book):
+        change = row["change_percent"]
+        if change is not None and change > ALERT_PERCENT:
+            alerts.append((row["item"], change))
+    return alerts
+
+
+def good_buys(book):
+    """Items whose buy signal is "Good time to buy" right now."""
+    items = []
+    for row in item_overview(book):
+        if row["signal"] == "Good time to buy":
+            items.append(row["item"])
+    return items
+
+
+def cost_by_market(book, shopping_list):
+    """Dictionary: market -> cost of the whole list if everything is bought there.
+
+    A market is left out if it has no price for one of the items.
+    """
+    totals = {}
+    for market in MARKETS:
+        quantities = []
+        prices = []
+        has_every_item = True
+        for item, quantity in shopping_list.items():
+            current_prices = latest_price_by_market(book.records_for(item))
+            if market not in current_prices:
+                has_every_item = False
+                break
+            quantities.append(quantity)
+            prices.append(current_prices[market])
+        if has_every_item and prices:
+            totals[market] = float(np.sum(np.array(quantities) * np.array(prices)))
+    return totals
+
+
+def family_basket(family_size):
+    """Dictionary: item -> amount a family of this size uses in a month (to the nearest 0.5)."""
+    basket = {}
+    for item, amount in MONTHLY_PER_PERSON.items():
+        basket[item] = round(amount * family_size * 2) / 2
+    return basket
